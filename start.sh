@@ -23,6 +23,4 @@ FRONTEND_PID=$!
 
 echo "Backend PID: $BACKEND_PID"
 echo "Frontend PID: $FRONTEND_PID"
-echo "Use 'kill $BACKEND_PID $FRONTEND_PID' to stop both"
-
-wait
+echo "Use './stop.sh' to stop both"
