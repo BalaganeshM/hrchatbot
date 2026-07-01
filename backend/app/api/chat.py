@@ -109,30 +109,24 @@ async def chat(
     )
     all_users = org_result.unique().scalars().all()
 
-    from app.core.rbac import get_employee_hierarchy
-    sub_ids = set()
-    if current_user.role == UserRole.manager:
-        subs = await get_employee_hierarchy(current_user.id, db)
-        sub_ids = {s.id for s in subs}
-        sub_ids.add(current_user.id)
-    elif current_user.role == UserRole.employee:
-        sub_ids = {current_user.id}
-
-    can_view_all_details = current_user.role == UserRole.admin
-
-    org_context_lines = []
+    org_lines = ["Name | Role | Position | Dept | Manager | Salary"]
+    dept_map = {d.id: d.name for u in all_users if u.department for d in [u.department]}
+    name_map = {u.id: u.full_name for u in all_users}
     for u in all_users:
-        mgr_name = ""
-        if u.manager_id:
-            mgr = next((x for x in all_users if x.id == u.manager_id), None)
-            mgr_name = mgr.full_name if mgr else ""
-        dept = u.department.name if u.department else ""
-        if can_view_all_details or u.id in sub_ids:
-            salary_str = f" | ${u.salary:,.0f}" if u.salary else ""
-            org_context_lines.append(f"{u.full_name} ({u.role.value}) - {u.position}, {dept} -> {mgr_name or 'top'}{salary_str}")
-        else:
-            org_context_lines.append(f"{u.full_name} ({u.role.value}) - {u.position}, {dept} -> {mgr_name or 'top'}")
-    org_context = "\n".join(org_context_lines)
+        mgr = name_map.get(u.manager_id, "top")
+        dept = dept_map.get(u.department_id, "-")
+        sal = f"${u.salary:,.0f}" if u.salary else "-"
+        org_lines.append(f"{u.full_name} | {u.role.value} | {u.position} | {dept} | {mgr} | {sal}")
+    org_context = "\n".join(org_lines)
+
+    user_role_str = user.role.value if user else current_user.role.value
+    user_display_name = user.full_name if user else current_user.full_name
+    if user_role_str == "admin":
+        salary_rule = f"ACCESS: {user_display_name} (admin) MAY see any salary."
+    elif user_role_str == "manager":
+        salary_rule = f"ACCESS: {user_display_name} (manager) may see salary of own reports ONLY."
+    else:
+        salary_rule = f"ACCESS: {user_display_name} (employee) may see OWN salary ONLY. NEVER reveal others' salaries."
 
     async def event_stream():
         full_text = ""
@@ -142,9 +136,10 @@ async def chat(
                 message,
                 session_id,
                 user_name=user.full_name if user else current_user.full_name,
-                user_role=user.role.value if user else current_user.role.value,
+                user_role=user_role_str,
                 user_department=user.department.name if user and user.department else "Unknown",
                 org_context=org_context,
+                salary_rule=salary_rule,
                 current_user_id=str(current_user.id),
                 current_user_role=current_user.role.value,
             ):

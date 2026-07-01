@@ -26,9 +26,9 @@ def get_llm():
     return ChatOllama(
         base_url=settings.OLLAMA_BASE_URL,
         model=settings.OLLAMA_MODEL,
-        temperature=0.1,
-        num_predict=2048,
-        num_ctx=4096,
+        temperature=0.0,
+        num_predict=512,
+        num_ctx=2048,
         num_thread=8,
         keep_alive="10m",
     )
@@ -78,21 +78,14 @@ def format_docs(docs) -> str:
 def _make_prompt():
     return ChatPromptTemplate.from_messages([
         ("system", (
-            "You are an SCB HR assistant. User: {user_name}, Role: {user_role}, Dept: {user_department}.\n"
-            "Answer elaborately in 4-5 sentences.\n\n"
-            "ACCESS RULES:\n"
-            "- Admin: can see salary (prefixed with $) of any employee.\n"
-            "- Manager: can see salary of their direct/indirect reports only.\n"
-            "- Employee: can see their own salary only.\n"
-            "For others not authorized, only share name, role, position, department, manager.\n"
-            "If asked for unauthorized details, politely refuse.\n\n"
+            "You are HR assistant. User is {user_name} ({user_role}, {user_department}).\n"
+            "Answer in 4-5 sentences.\n\n"
+            "{salary_rule}\n\n"
             "ORG CHANGES:\n"
-            "- Only admins can change reporting lines.\n"
-            "- Non-admins: refuse and suggest contacting an admin.\n"
-            "- Admin: to apply, end response with:\n"
-            "[ACTION: UPDATE_MANAGER employee=\"Full Name\" new_manager=\"Full Name\"]\n\n"
-            "Policy Context:\n{context}\n\n"
-            "Organization Data:\n{org_context}"
+            "- Only admins can change reporting lines (use [ACTION: UPDATE_MANAGER employee=\"Full Name\" new_manager=\"Full Name\"]).\n"
+            "- Non-admins: refuse.\n\n"
+            "HR Policy:\n{context}\n\n"
+            "Org Data:\n{org_context}"
         )),
         MessagesPlaceholder("chat_history"),
         ("human", "{input}"),
@@ -117,6 +110,7 @@ async def ask_hr_policy(
     user_role: str = "Unknown",
     user_department: str = "Unknown",
     org_context: str = "",
+    salary_rule: str = "can view their own salary only.",
     current_user_id: str = "",
     current_user_role: str = "",
 ) -> str:
@@ -124,7 +118,8 @@ async def ask_hr_policy(
     async for token in ask_hr_policy_stream(
         question, session_id,
         user_name, user_role, user_department,
-        org_context, current_user_id, current_user_role,
+        org_context, salary_rule,
+        current_user_id, current_user_role,
     ):
         tokens.append(token)
     return "".join(tokens)
@@ -137,6 +132,7 @@ async def ask_hr_policy_stream(
     user_role: str = "Unknown",
     user_department: str = "Unknown",
     org_context: str = "",
+    salary_rule: str = "can view their own salary only.",
     current_user_id: str = "",
     current_user_role: str = "",
 ) -> AsyncGenerator[str, None]:
@@ -144,9 +140,12 @@ async def ask_hr_policy_stream(
     if q in _GREETINGS:
         context = ""
     else:
-        retriever = get_retriever()
-        docs = await retriever.ainvoke(question)
-        context = format_docs(docs)
+        try:
+            retriever = get_retriever()
+            docs = await retriever.ainvoke(question)
+            context = format_docs(docs)
+        except Exception:
+            context = ""
 
     input_data = {
         "input": question,
@@ -155,11 +154,13 @@ async def ask_hr_policy_stream(
         "user_name": user_name,
         "user_role": user_role,
         "user_department": user_department,
+        "salary_rule": salary_rule,
     }
     config = {"configurable": {"session_id": session_id}}
     chain = get_conversational_chat()
 
     stream = chain.astream(input_data, config=config)
+    buffer = ""
     try:
         while True:
             chunk = await asyncio.wait_for(
@@ -167,10 +168,20 @@ async def ask_hr_policy_stream(
                 timeout=settings.OLLAMA_STREAM_TIMEOUT,
             )
             if chunk.content:
-                yield chunk.content
+                buffer += chunk.content
+                for boundary in (". ", "! ", "? "):
+                    if boundary in buffer:
+                        parts = buffer.split(boundary, 1)
+                        yield parts[0] + boundary.strip()
+                        buffer = parts[1]
+                        break
     except StopAsyncIteration:
+        if buffer.strip():
+            yield buffer
         return
     except asyncio.TimeoutError:
+        if buffer.strip():
+            yield buffer
         yield "\n\n[Request timed out. Please try a simpler question or try again later.]"
 
 
