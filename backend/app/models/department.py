@@ -1,3 +1,5 @@
+from typing import Optional
+
 import uuid
 from datetime import datetime
 
@@ -12,8 +14,8 @@ class Department(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(200), unique=True)
-    description: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    head_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"), nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    head_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     head = relationship("User", foreign_keys=[head_id], post_update=True)

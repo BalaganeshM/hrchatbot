@@ -1,3 +1,5 @@
+from typing import Optional
+
 import uuid
 from datetime import date, datetime
 
@@ -23,12 +25,12 @@ class User(Base):
     first_name: Mapped[str] = mapped_column(String(100))
     last_name: Mapped[str] = mapped_column(String(100))
     role: Mapped[UserRole] = mapped_column(SAEnum(UserRole), default=UserRole.employee)
-    department_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("departments.id"), nullable=True)
-    manager_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"), nullable=True)
-    position: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    salary: Mapped[float | None] = mapped_column(Float, nullable=True)
-    hire_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    department_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, ForeignKey("departments.id"), nullable=True)
+    manager_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, ForeignKey("users.id"), nullable=True)
+    position: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    salary: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    hire_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
