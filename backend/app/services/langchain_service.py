@@ -2,13 +2,16 @@ import asyncio
 from functools import lru_cache
 from typing import AsyncGenerator
 
-from langchain_ollama import ChatOllama, OllamaEmbeddings
+from langchain_ollama import ChatOllama
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
 from langchain_chroma import Chroma
+from langchain_core.embeddings import Embeddings
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
 
 from app.config import settings
 
@@ -34,12 +37,20 @@ def get_llm():
     )
 
 
+class _ONNXEmbeddings(Embeddings):
+    def __init__(self):
+        self._ef = ONNXMiniLM_L6_V2()
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return self._ef(texts)
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._ef([text])[0]
+
+
 @lru_cache
-def get_embeddings():
-    return OllamaEmbeddings(
-        base_url=settings.OLLAMA_BASE_URL,
-        model=settings.OLLAMA_EMBEDDING_MODEL,
-    )
+def get_embeddings() -> Embeddings:
+    return _ONNXEmbeddings()
 
 
 @lru_cache
