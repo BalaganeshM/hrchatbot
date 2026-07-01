@@ -18,7 +18,7 @@ BACKEND_PID=$!
 # Start frontend
 echo "Starting frontend on port 3000..."
 cd "$ROOT/frontend"
-npm run dev &
+npm run dev -- --host &
 FRONTEND_PID=$!
 
 echo "Backend PID: $BACKEND_PID"
