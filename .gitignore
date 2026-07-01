@@ -1,0 +1,14 @@
+node_modules/
+__pycache__/
+*.pyc
+chroma_db/
+.DS_Store
+dist/
+build/
+*.egg-info/
+.venv/
+venv/
+*.db
+*.log
+*.tsbuildinfo
+backend.log
