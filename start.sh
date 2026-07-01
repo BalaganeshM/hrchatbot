@@ -3,6 +3,11 @@ set -e
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 
+# Kill existing processes on target ports
+kill -9 $(lsof -ti:3000) 2>/dev/null || true
+kill -9 $(lsof -ti:8000) 2>/dev/null || true
+sleep 1
+
 # Start backend
 echo "Starting backend on port 8000..."
 cd "$ROOT/backend"
