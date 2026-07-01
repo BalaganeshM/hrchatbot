@@ -1,5 +1,4 @@
 import asyncio
-import time
 from functools import lru_cache
 from typing import AsyncGenerator
 
@@ -12,6 +11,12 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.config import settings
+
+_GREETINGS = frozenset({
+    "hi", "hello", "hey", "good morning", "good afternoon", "good evening",
+    "good day", "thanks", "thank you", "hi there", "hello there", "hey there",
+    "morning", "afternoon", "evening", "yo", "sup",
+})
 
 
 # ── LLM / Embedding / Vector Store ──
@@ -115,32 +120,14 @@ async def ask_hr_policy(
     current_user_id: str = "",
     current_user_role: str = "",
 ) -> str:
-    retriever = get_retriever()
-    docs = await retriever.ainvoke(question)
-    context = format_docs(docs)
-
-    for attempt in range(2):
-        try:
-            result = await asyncio.wait_for(
-                get_conversational_chat().ainvoke(
-                    {
-                        "input": question,
-                        "context": context or "No specific HR policy documents found for this query.",
-                        "org_context": org_context or "No organization data available.",
-                        "user_name": user_name,
-                        "user_role": user_role,
-                        "user_department": user_department,
-                    },
-                    config={"configurable": {"session_id": session_id}},
-                ),
-                timeout=settings.OLLAMA_TIMEOUT,
-            )
-            return result.content
-        except asyncio.TimeoutError:
-            if attempt == 1:
-                return "I'm sorry, the request timed out. Please try a simpler question or try again later."
-            await asyncio.sleep(1)
-    return "I'm sorry, an error occurred. Please try again."
+    tokens = []
+    async for token in ask_hr_policy_stream(
+        question, session_id,
+        user_name, user_role, user_department,
+        org_context, current_user_id, current_user_role,
+    ):
+        tokens.append(token)
+    return "".join(tokens)
 
 
 async def ask_hr_policy_stream(
@@ -153,9 +140,13 @@ async def ask_hr_policy_stream(
     current_user_id: str = "",
     current_user_role: str = "",
 ) -> AsyncGenerator[str, None]:
-    retriever = get_retriever()
-    docs = await retriever.ainvoke(question)
-    context = format_docs(docs)
+    q = question.strip().lower().rstrip(".!?").strip()
+    if q in _GREETINGS:
+        context = ""
+    else:
+        retriever = get_retriever()
+        docs = await retriever.ainvoke(question)
+        context = format_docs(docs)
 
     input_data = {
         "input": question,
@@ -168,27 +159,19 @@ async def ask_hr_policy_stream(
     config = {"configurable": {"session_id": session_id}}
     chain = get_conversational_chat()
 
-    for attempt in range(2):
-        try:
-            start = time.monotonic()
-            result = await asyncio.wait_for(
-                chain.ainvoke(input_data, config=config),
-                timeout=settings.OLLAMA_TIMEOUT,
+    stream = chain.astream(input_data, config=config)
+    try:
+        while True:
+            chunk = await asyncio.wait_for(
+                stream.__anext__(),
+                timeout=settings.OLLAMA_STREAM_TIMEOUT,
             )
-            elapsed = time.monotonic() - start
-            text = result.content
-            # adaptive chunking based on actual response speed
-            chunk_size = max(1, len(text) // max(1, int(elapsed * 10)))
-            chunk_size = min(chunk_size, 8)
-            for i in range(0, len(text), chunk_size):
-                yield text[i:i + chunk_size]
-                await asyncio.sleep(0.003)
-            return
-        except asyncio.TimeoutError:
-            if attempt == 1:
-                yield "\n\n[Request timed out. Please try a simpler question or try again later.]"
-                return
-            await asyncio.sleep(1)
+            if chunk.content:
+                yield chunk.content
+    except StopAsyncIteration:
+        return
+    except asyncio.TimeoutError:
+        yield "\n\n[Request timed out. Please try a simpler question or try again later.]"
 
 
 async def ingest_hr_documents(docs_dir: str = "app/hr_docs") -> int:

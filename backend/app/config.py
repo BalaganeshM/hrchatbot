@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "change-me-in-production-use-a-real-secret"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
-    OLLAMA_BASE_URL: str = "http://44.192.6.64:11434"
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "llama3.2:3b"
     OLLAMA_EMBEDDING_MODEL: str = "llama3.2:3b"
     OLLAMA_TIMEOUT: int = 120
